@@ -1,0 +1,59 @@
+import random
+from typing import List, Dict
+from nas.evolution import mutate_arch
+from nas.selector import select_best_backbone
+from federated.aggregation import fedavg
+
+
+class OrchNASServer:
+    def __init__(self, global_model, search_space, config):
+        self.global_model = global_model
+        self.search_space = search_space
+        self.config = config
+        self.shared_backbone_arch = self.search_space.sample_arch()
+
+    def sample_clients(self, clients: List):
+        return random.sample(clients, self.config.clients_per_round)
+
+    def generate_candidates(self, num_candidates: int = 4) -> List[Dict]:
+        candidates = [self.shared_backbone_arch]
+        for _ in range(num_candidates - 1):
+            mutated = mutate_arch(
+                self.shared_backbone_arch,
+                self.config.depth_choices,
+                self.config.width_choices,
+                self.config.kernel_choices,
+            )
+            candidates.append(mutated)
+        return candidates
+
+    def communication_round(self, clients: List):
+        selected_clients = self.sample_clients(clients)
+
+        # Step 1: Shared backbone search
+        candidates = self.generate_candidates()
+        client_scores = []
+
+        for client in selected_clients:
+            scores = [client.evaluate_candidate(cand) for cand in candidates]
+            client_scores.append(scores)
+
+        self.shared_backbone_arch = select_best_backbone(candidates, client_scores)
+
+        # Step 2: Personalised local optimisation
+        local_states = []
+        client_subnets = {}
+
+        for client in selected_clients:
+            client.global_model.load_state_dict(self.global_model.state_dict())
+            state_dict, subnet_arch = client.local_train(self.shared_backbone_arch)
+            local_states.append(state_dict)
+            client_subnets[client.client_id] = subnet_arch
+
+        new_global_state = fedavg(local_states)
+        self.global_model.load_state_dict(new_global_state)
+
+        return {
+            "shared_backbone_arch": self.shared_backbone_arch,
+            "client_subnets": client_subnets,
+        }
