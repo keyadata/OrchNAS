@@ -1,0 +1,19 @@
+import random
+from typing import Dict
+
+
+class SearchSpace:
+    def __init__(self, depth_choices, width_choices, kernel_choices):
+        self.depth_choices = depth_choices
+        self.width_choices = width_choices
+        self.kernel_choices = kernel_choices
+
+    def sample_arch(self) -> Dict:
+        depth = random.choice(self.depth_choices)
+        width = random.choice(self.width_choices)
+        kernels = [random.choice(self.kernel_choices) for _ in range(depth)]
+        return {
+            "depth": depth,
+            "width": width,
+            "kernels": kernels,
+        }
