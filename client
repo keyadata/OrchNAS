@@ -1,0 +1,51 @@
+from typing import Dict
+import copy
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from energy.constraints import energy_aware_score
+from models.subnet import extract_subnet_config
+
+
+class OrchNASClient:
+    def __init__(self, client_id: int, model: nn.Module, train_dataset, config, device_state: Dict):
+        self.client_id = client_id
+        self.global_model = model
+        self.train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+        self.config = config
+        self.device_state = device_state
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def evaluate_candidate(self, arch: Dict) -> float:
+        """
+        Placeholder candidate evaluation.
+        You can replace this with validation accuracy under shared weights.
+        """
+        pseudo_acc = 1.0 / (1.0 + abs(arch["width"] - 32) * 0.01 + abs(arch["depth"] - 3) * 0.05)
+        constraints = {
+            "energy_budget": self.device_state["energy_budget"],
+            "memory_budget": self.device_state["memory_budget"],
+            "compute_budget": self.device_state["compute_budget"],
+            "alpha": self.device_state["alpha"],
+        }
+        return energy_aware_score(pseudo_acc, arch, constraints, self.config.lambda_energy)
+
+    def local_train(self, shared_arch: Dict):
+        local_model = copy.deepcopy(self.global_model).to(self.device)
+        optimizer = torch.optim.Adam(local_model.parameters(), lr=self.config.lr)
+        criterion = nn.CrossEntropyLoss()
+
+        subnet_arch = extract_subnet_config(shared_arch, self.device_state)
+
+        local_model.train()
+        for _ in range(self.config.local_epochs):
+            for x, y in self.train_loader:
+                x, y = x.to(self.device), y.to(self.device)
+
+                optimizer.zero_grad()
+                logits = local_model(x, subnet_arch)
+                loss = criterion(logits, y)
+                loss.backward()
+                optimizer.step()
+
+        return local_model.state_dict(), subnet_arch
