@@ -1,0 +1,27 @@
+from typing import Dict
+
+
+class EnergyProfiler:
+    """
+    Lightweight proxy estimator for training energy.
+    Replace with real power measurements if available.
+    """
+
+    @staticmethod
+    def estimate_energy(arch: Dict, device_state: Dict) -> float:
+        depth = arch["depth"]
+        width = arch["width"]
+        kernel_cost = sum(k * k for k in arch["kernels"])
+
+        model_cost = depth * width + 0.1 * kernel_cost
+        device_factor = device_state.get("alpha", 1.0)
+
+        return model_cost * device_factor
+
+    @staticmethod
+    def estimate_memory(arch: Dict) -> float:
+        return arch["depth"] * arch["width"] * 0.5
+
+    @staticmethod
+    def estimate_compute(arch: Dict) -> float:
+        return arch["depth"] * arch["width"] * sum(arch["kernels"])
