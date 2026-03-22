@@ -12,4 +12,3 @@ OrchNAS is an energy-aware personalised edge intelligence framework that leverag
 ## Run
 ```bash
 pip install -r requirements.txt
-python train.py
